@@ -18,6 +18,8 @@ export class Router {
     #routes = new Map([
         ["GET", new Map()],
         ["POST", new Map()],
+        ["PATCH", new Map()],
+        ["DELETE", new Map()],
     ]);
 
     #add(method, pathname, handler) {
@@ -26,6 +28,27 @@ export class Router {
         }
 
         this.#routes.get(method)?.set(pathname, handler);
+    }
+
+    // TODO handle more parameters
+    #parseParams(url, reqUrl) {
+        const pathname = url.exec(reqUrl)?.pathname.groups;
+        const search = url.exec(reqUrl)?.search.groups;
+        const params = {};
+
+        if (Object.keys(pathname).length) params.pathname = pathname;
+        if (Object.keys(search).length) params.search = search;
+                    
+        return params;
+    }
+
+    // TODO handle more than JSON
+    async #parseBody(req) {
+        try {
+            return JSON.parse(await req.text());
+        } catch (_) {
+            return null;
+        }
     }
 
     /**
@@ -44,7 +67,7 @@ export class Router {
     /**
      * Register a function to handle POST requests at a given path
      * @example
-     * router.post("/", ({ req, params }) => {
+     * router.post("/", ({ req }) => {
      *     const body = await req.json();
      *     return new Response("Example!");
      * });
@@ -53,6 +76,34 @@ export class Router {
      */
     post(pathname, handler) {
         this.#add("POST", pathname, handler);
+    }
+
+    /**
+     * Register a function to handle PATCH requests at a given path
+     * @example
+     * router.patch("/", ({ req }) => {
+     *     const body = await req.json();
+     *     return new Response("Example!");
+     * });
+     * @param {string} pathname
+     * @param {Function} handler
+     */
+    patch(pathname, handler) {
+        this.#add("PATCH", pathname, handler);
+    }
+
+    /**
+     * Register a function to handle DELETE requests at a given path
+     * @example
+     * router.delete("/", ({ req }) => {
+     *     const body = await req.json();
+     *     return new Response("Example!");
+     * });
+     * @param {string} pathname
+     * @param {Function} handler
+     */
+    delete(pathname, handler) {
+        this.#add("DELETE", pathname, handler);
     }
 
     /**
@@ -67,7 +118,7 @@ export class Router {
     static(pathname = "/static", foldername = "static") {
         this.#add("GET", `${pathname}/:path*`, async ({ params }) => {
             try {
-                const file = await Deno.open(`./${foldername}/` + params.path, {
+                const file = await Deno.open(`./${foldername}/` + params.pathname.path, {
                     read: true,
                 });
 
@@ -76,10 +127,10 @@ export class Router {
                 const headers = new Headers();
 
                 // TODO add more types
-                if (/\.js$/s.test(params.path)) {
+                if (params.pathname.path.endsWith('.js')) {
                     headers.append("content-type", "text/javascript");
                 }
-
+                
                 return new Response(readableStream, { headers });
             } catch (_error) {
                 return new Response("Not Found", { status: 404 });
@@ -98,20 +149,21 @@ export class Router {
      */
     async route(req) {
         let status = 405;
-
         if (this.#routes.has(req.method)) {
+            status = 404;
+
             for (const [pathname, handler] of this.#routes.get(req.method)) {
                 const url = new URLPattern({ pathname });
+
                 if (url.test(req.url)) {
-                    const params = url.exec(req.url)?.pathname.groups;
+                    const params = this.#parseParams(url, req.url);
+                    const body = await this.#parseBody(req);
+
                     try {
-                        return await handler({ req, params });
-                    } catch (error) {
-                        console.error(error);
+                        return await handler({ req, params, body });
+                    } catch (_) {
                         status = 500;
                     }
-                } else {
-                    status = 404;
                 }
             }
         }
@@ -154,6 +206,36 @@ Deno.test("Router - post route with body works", async () => {
     const response = await router.route(
         new Request("http://localhost/test", {
             method: "POST",
+            body: JSON.stringify({ test: "TEST" }),
+        }),
+    );
+    assertEquals(await response.text(), "test, TEST!");
+});
+
+Deno.test("Router - patch route with body works", async () => {
+    const router = new Router();
+    router.patch("/test", async ({ req }) => {
+        const body = await req.json();
+        return new Response(`test, ${body.test}!`);
+    });
+    const response = await router.route(
+        new Request("http://localhost/test", {
+            method: "PATCH",
+            body: JSON.stringify({ test: "TEST" }),
+        }),
+    );
+    assertEquals(await response.text(), "test, TEST!");
+});
+
+Deno.test("Router - delete route with body works", async () => {
+    const router = new Router();
+    router.delete("/test", async ({ req }) => {
+        const body = await req.json();
+        return new Response(`test, ${body.test}!`);
+    });
+    const response = await router.route(
+        new Request("http://localhost/test", {
+            method: "DELETE",
             body: JSON.stringify({ test: "TEST" }),
         }),
     );
