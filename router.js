@@ -189,7 +189,7 @@ Deno.test("Router - invalid pathname throws", () => {
 Deno.test("Router - get route with params works", async () => {
     const router = new Router();
     router.get("/test/:id", ({ params }) => {
-        return new Response(`test, ${params.id}!`);
+        return new Response(`test, ${params.pathname.id}!`);
     });
     const response = await router.route(
         new Request("http://localhost/test/123"),
@@ -199,8 +199,7 @@ Deno.test("Router - get route with params works", async () => {
 
 Deno.test("Router - post route with body works", async () => {
     const router = new Router();
-    router.post("/test", async ({ req }) => {
-        const body = await req.json();
+    router.post("/test", async ({ body }) => {
         return new Response(`test, ${body.test}!`);
     });
     const response = await router.route(
@@ -214,8 +213,7 @@ Deno.test("Router - post route with body works", async () => {
 
 Deno.test("Router - patch route with body works", async () => {
     const router = new Router();
-    router.patch("/test", async ({ req }) => {
-        const body = await req.json();
+    router.patch("/test", async ({ body }) => {
         return new Response(`test, ${body.test}!`);
     });
     const response = await router.route(
@@ -229,8 +227,7 @@ Deno.test("Router - patch route with body works", async () => {
 
 Deno.test("Router - delete route with body works", async () => {
     const router = new Router();
-    router.delete("/test", async ({ req }) => {
-        const body = await req.json();
+    router.delete("/test", async ({ body }) => {
         return new Response(`test, ${body.test}!`);
     });
     const response = await router.route(
